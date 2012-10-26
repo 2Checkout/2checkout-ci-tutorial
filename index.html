@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="2Checkout PHP Tutorial : 2Checkout CodeIgniter Example Tutorial" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>2Checkout PHP Tutorial</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/2Checkout/2checkout-ci-tutorial">View on GitHub</a>
+
+          <h1 id="project_title">2Checkout PHP Tutorial</h1>
+          <h2 id="project_tagline">2Checkout CodeIgniter Example Tutorial</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/2Checkout/2checkout-ci-tutorial/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/2Checkout/2checkout-ci-tutorial/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h2>2Checkout CodeIgniter Integration Tutorial</h2>
+
+<hr><p>In this tutorial we will walk through integrating the 2Checkout payment method into an existing user management application built on CodeIgniter Bootstrap (CodeIgniter 2.1.2, TwitterBootstrap 2.1.0). This demo application also utilizes the ion_auth user authentication library. The source for the example application used in this tutorial can be accessed in this Github repository.</p>
+
+<h2>Setting up the Example Application</h2>
+
+<p>We need an existing example application to demonstrate the integration so lets download or clone the 2checkout-ci-example application.</p>
+
+<div class="highlight"><pre><span class="nv">$ </span>git clone https://github.com/2checkout/2checkout-ci-tutorial.git
+</pre></div>
+
+<p>This repository contains both an example before and after application so that we can follow along with the tutorial using the site_before app and compare the result with the site_after app. We can start by moving the site_before directory to the webroot directory on our server and let rename it to web-widgets which is the name of our site.</p>
+
+<p>Now we need to create our database.</p>
+
+<div class="highlight"><pre>create database webwidgets;
+</pre></div>
+
+<p>Next we run the mysql_database.sql file on our database.</p>
+
+<div class="highlight"><pre>mysql webwidgets &lt; mysql_database.sql -u &lt;mysql username&gt; -p
+</pre></div>
+
+<p>Now we can specify our database credentials in our application.</p>
+
+<p>application/config/database.php</p>
+
+<div class="highlight"><pre><span class="nv">$db</span><span class="p">[</span><span class="s1">'default'</span><span class="p">][</span><span class="s1">'hostname'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'localhost'</span><span class="p">;</span>
+<span class="nv">$db</span><span class="p">[</span><span class="s1">'default'</span><span class="p">][</span><span class="s1">'username'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'your mysql username'</span><span class="p">;</span>
+<span class="nv">$db</span><span class="p">[</span><span class="s1">'default'</span><span class="p">][</span><span class="s1">'password'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'your mysql password'</span><span class="p">;</span>
+<span class="nv">$db</span><span class="p">[</span><span class="s1">'default'</span><span class="p">][</span><span class="s1">'database'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'webwidgets'</span><span class="p">;</span>
+<span class="nv">$db</span><span class="p">[</span><span class="s1">'default'</span><span class="p">][</span><span class="s1">'dbdriver'</span><span class="p">]</span> <span class="o">=</span> <span class="s1">'mysql'</span><span class="p">;</span>
+</pre></div>
+
+<p>We can then view the example application at <a href="http://localhost/web-widgets/index.php">http://localhost/web-widgets/index.php</a>.</p>
+
+<p><img src="http://github.com/2checkout/2checkout-ci-tutorial/raw/master/img/webwidgets-1.png" alt=""></p>
+
+<p>You can see that this site requires users to signup for a membership to access the web-widget content pages. Once logged in, they can also manage their user account, but do not have access to the admin functions.</p>
+
+<p>In this tutorial, we will integrate the 2Checkout payment method so that the user must order a recurring monthly membership before gaining access to the contect. We will also setup a listener that will be responsible for updating the users access to the contact based on the Notifications that 2Checkout sends on their recurring billing status and provide the user with the ability to update their billing information and cancel their recurring membership.</p>
+
+<h2>Setting up the 2Checkout PHP Library</h2>
+
+<p>2Checkouts a PHP library provides us with a simple bindings to the API, INS and Checkout process so that we can integrate each feature with only a few lines of code. We can download or clone the library at <a href="https://github.com/2checkout/2checkout-php">https://github.com/2checkout/2checkout-php</a>.</p>
+
+<p>Including the library is as easy as copying contents of the <strong>lib</strong> directory to "application/libraries" and then we can require the library where we want it in our application. In our case, we will be working with the <strong>order</strong> controller so in "application/contollers/order.php" we will require the Twocheckout.php abstract class in the constructor.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="k">require_once</span><span class="p">(</span><span class="nx">APPPATH</span> <span class="o">.</span> <span class="s1">'libraries/Twocheckout.php'</span><span class="p">);</span>
+</pre></div>
+
+<p>Know we have access to all of the 2Checkout bindings and are ready to integrate.</p>
+
+<h2>Checkout</h2>
+
+<p>Currently we are activating users automatically. So lets go ahead and turn automatic activation off in the ion_auth.php configuration file by setting the manual_activation option to true.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="nv">$config</span><span class="p">[</span><span class="s1">'manual_activation'</span><span class="p">]</span>    <span class="o">=</span> <span class="k">TRUE</span><span class="p">;</span>
+</pre></div>
+
+<p>Now, lets take a look at our register function.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">register</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="c1">//validate form input</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_rules</span><span class="p">(</span><span class="s1">'first_name'</span><span class="p">,</span> <span class="s1">'First Name'</span><span class="p">,</span> <span class="s1">'required|xss_clean'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_rules</span><span class="p">(</span><span class="s1">'last_name'</span><span class="p">,</span> <span class="s1">'Last Name'</span><span class="p">,</span> <span class="s1">'required|xss_clean'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_rules</span><span class="p">(</span><span class="s1">'email'</span><span class="p">,</span> <span class="s1">'Email Address'</span><span class="p">,</span> <span class="s1">'required|valid_email'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_rules</span><span class="p">(</span><span class="s1">'password'</span><span class="p">,</span> <span class="s1">'Password'</span><span class="p">,</span> <span class="s1">'required|min_length['</span> <span class="o">.</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">config</span><span class="o">-&gt;</span><span class="na">item</span><span class="p">(</span><span class="s1">'min_password_length'</span><span class="p">,</span> <span class="s1">'ion_auth'</span><span class="p">)</span> <span class="o">.</span> <span class="s1">']|max_length['</span> <span class="o">.</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">config</span><span class="o">-&gt;</span><span class="na">item</span><span class="p">(</span><span class="s1">'max_password_length'</span><span class="p">,</span> <span class="s1">'ion_auth'</span><span class="p">)</span> <span class="o">.</span> <span class="s1">']|matches[password_confirm]'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_rules</span><span class="p">(</span><span class="s1">'password_confirm'</span><span class="p">,</span> <span class="s1">'Password Confirmation'</span><span class="p">,</span> <span class="s1">'required'</span><span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">run</span><span class="p">()</span> <span class="o">==</span> <span class="k">true</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="nv">$username</span> <span class="o">=</span> <span class="nx">strtolower</span><span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'first_name'</span><span class="p">))</span> <span class="o">.</span> <span class="s1">' '</span> <span class="o">.</span> <span class="nx">strtolower</span><span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'last_name'</span><span class="p">));</span>
+            <span class="nv">$email</span>    <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'email'</span><span class="p">);</span>
+            <span class="nv">$password</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'password'</span><span class="p">);</span>
+
+            <span class="nv">$additional_data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'first_name'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'first_name'</span><span class="p">),</span>
+                <span class="s1">'last_name'</span>  <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'last_name'</span><span class="p">),</span>
+            <span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">run</span><span class="p">()</span> <span class="o">==</span> <span class="k">true</span> <span class="o">&amp;&amp;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">register</span><span class="p">(</span><span class="nv">$username</span><span class="p">,</span> <span class="nv">$password</span><span class="p">,</span> <span class="nv">$email</span><span class="p">,</span> <span class="nv">$additional_data</span><span class="p">))</span>
+        <span class="p">{</span>
+            <span class="c1">//check to see if we are creating the user</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">session</span><span class="o">-&gt;</span><span class="na">set_flashdata</span><span class="p">(</span><span class="s1">'message'</span><span class="p">,</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">messages</span><span class="p">());</span>
+
+            <span class="c1">//redirect to login</span>
+            <span class="nx">redirect</span><span class="p">(</span><span class="s1">'auth/login'</span><span class="p">,</span> <span class="s1">'refresh'</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">else</span>
+        <span class="p">{</span>
+            <span class="c1">//display the create user form</span>
+            <span class="c1">//set the flash data error message if there is one</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">[</span><span class="s1">'message'</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="nx">validation_errors</span><span class="p">()</span> <span class="o">?</span> <span class="nx">validation_errors</span><span class="p">()</span> <span class="o">:</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">errors</span><span class="p">()</span> <span class="o">?</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">errors</span><span class="p">()</span> <span class="o">:</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">session</span><span class="o">-&gt;</span><span class="na">flashdata</span><span class="p">(</span><span class="s1">'message'</span><span class="p">)));</span>
+
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">[</span><span class="s1">'first_name'</span><span class="p">]</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'name'</span>  <span class="o">=&gt;</span> <span class="s1">'first_name'</span><span class="p">,</span>
+                <span class="s1">'id'</span>    <span class="o">=&gt;</span> <span class="s1">'first_name'</span><span class="p">,</span>
+                <span class="s1">'type'</span>  <span class="o">=&gt;</span> <span class="s1">'text'</span><span class="p">,</span>
+                <span class="s1">'value'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_value</span><span class="p">(</span><span class="s1">'first_name'</span><span class="p">),</span>
+            <span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">[</span><span class="s1">'last_name'</span><span class="p">]</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'name'</span>  <span class="o">=&gt;</span> <span class="s1">'last_name'</span><span class="p">,</span>
+                <span class="s1">'id'</span>    <span class="o">=&gt;</span> <span class="s1">'last_name'</span><span class="p">,</span>
+                <span class="s1">'type'</span>  <span class="o">=&gt;</span> <span class="s1">'text'</span><span class="p">,</span>
+                <span class="s1">'value'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_value</span><span class="p">(</span><span class="s1">'last_name'</span><span class="p">),</span>
+            <span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">[</span><span class="s1">'email'</span><span class="p">]</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'name'</span>  <span class="o">=&gt;</span> <span class="s1">'email'</span><span class="p">,</span>
+                <span class="s1">'id'</span>    <span class="o">=&gt;</span> <span class="s1">'email'</span><span class="p">,</span>
+                <span class="s1">'type'</span>  <span class="o">=&gt;</span> <span class="s1">'text'</span><span class="p">,</span>
+                <span class="s1">'value'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_value</span><span class="p">(</span><span class="s1">'email'</span><span class="p">),</span>
+            <span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">[</span><span class="s1">'password'</span><span class="p">]</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'name'</span>  <span class="o">=&gt;</span> <span class="s1">'password'</span><span class="p">,</span>
+                <span class="s1">'id'</span>    <span class="o">=&gt;</span> <span class="s1">'password'</span><span class="p">,</span>
+                <span class="s1">'type'</span>  <span class="o">=&gt;</span> <span class="s1">'password'</span><span class="p">,</span>
+                <span class="s1">'value'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_value</span><span class="p">(</span><span class="s1">'password'</span><span class="p">),</span>
+            <span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">[</span><span class="s1">'password_confirm'</span><span class="p">]</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'name'</span>  <span class="o">=&gt;</span> <span class="s1">'password_confirm'</span><span class="p">,</span>
+                <span class="s1">'id'</span>    <span class="o">=&gt;</span> <span class="s1">'password_confirm'</span><span class="p">,</span>
+                <span class="s1">'type'</span>  <span class="o">=&gt;</span> <span class="s1">'password'</span><span class="p">,</span>
+                <span class="s1">'value'</span> <span class="o">=&gt;</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">form_validation</span><span class="o">-&gt;</span><span class="na">set_value</span><span class="p">(</span><span class="s1">'password_confirm'</span><span class="p">),</span>
+            <span class="p">);</span>
+        <span class="p">}</span>
+
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/header'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/navblank'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/order/register'</span><span class="p">,</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">data</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/footer'</span><span class="p">);</span>
+    <span class="p">}</span>
+</pre></div>
+
+<p>As you can see, we are currently setting up the registration form fields, checking the field validation and if the user input passes validation, we register the user ad redirect to the login page. Since we are now requiring a manual activation, we want to pass the user to 2Checkout to pay for the membership before we activate them. To accomplish this, we will remove the login redirect, get the user id from the database and utilize the <code>Twocheckout::Charge::redirect</code> binding.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+    <span class="c1">//get user id</span>
+    <span class="nv">$query</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">db</span><span class="o">-&gt;</span><span class="na">query</span><span class="p">(</span><span class="s2">"SELECT * FROM users WHERE email = '</span><span class="si">$email</span><span class="s2">'"</span><span class="p">);</span>
+    <span class="nv">$row</span> <span class="o">=</span> <span class="nv">$query</span><span class="o">-&gt;</span><span class="na">row</span><span class="p">();</span>
+    <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$row</span><span class="o">-&gt;</span><span class="na">id</span><span class="p">;</span>
+
+    <span class="c1">//setup the checkout parameters</span>
+    <span class="nv">$args</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+        <span class="s1">'sid'</span> <span class="o">=&gt;</span> <span class="mi">1817037</span><span class="p">,</span>
+        <span class="s1">'mode'</span> <span class="o">=&gt;</span> <span class="s2">"2CO"</span><span class="p">,</span>
+        <span class="s1">'li_0_name'</span> <span class="o">=&gt;</span> <span class="s2">"Monthly Subscription"</span><span class="p">,</span>
+        <span class="s1">'li_0_price'</span> <span class="o">=&gt;</span> <span class="s2">"1.00"</span><span class="p">,</span>
+        <span class="s1">'li_0_recurrence'</span> <span class="o">=&gt;</span> <span class="s2">"1 Month"</span><span class="p">,</span>
+        <span class="s1">'merchant_order_id'</span> <span class="o">=&gt;</span> <span class="nv">$id</span>
+    <span class="p">);</span>
+
+    <span class="c1">//pass the buyer and the parameters to the checkout</span>
+    <span class="nx">Twocheckout_Charge</span><span class="o">::</span><span class="na">redirect</span><span class="p">(</span><span class="nv">$args</span><span class="p">);</span>
+</pre></div>
+
+<p>Lets take a look at what we did here. First we grabbed the the id for this user from the database and assigned it to the <code>$id</code> variable.</p>
+
+<p>Then we create an array of sale parameters to pass to 2Checkout using the <a href="https://www.2checkout.com/blog/knowledge-base/merchants/tech-support/3rd-party-carts/parameter-sets/pass-through-product-parameter-set/">Pass-Through-Products</a> parameter set and we assign the <code>$id</code> to the <code>merchant_order_id</code> parameter. <em>(The value passed with the <code>merchant_order_id parameter</code> will be passed back to our approved URL and will be returned using the <code>vendor_order_id</code> parameter on all INS messages pertaining to the sale.)</em></p>
+
+<p>Then we pass the parameters and the buyer to our custom checkout page on 2Checkout's secure server to complete the order.</p>
+
+<h2>Passback</h2>
+
+<p>When the order is completed, 2Checkout will return the buyer and the sale parameters to the URL that we specify as the approved URL in our account. This URL can also be passed in dynamically for each sale using the <code>x_receipt_link_url</code> parameter.</p>
+
+<p>Before we have a route for the approved URL, we will need to create our passback function in the order controller.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+    <span class="k">public</span> <span class="k">function</span> <span class="nf">passback</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="c1">//Assign the returned parameters to an array.</span>
+        <span class="nv">$params</span> <span class="o">=</span> <span class="k">array</span><span class="p">();</span>
+        <span class="k">foreach</span> <span class="p">(</span><span class="nv">$_REQUEST</span> <span class="k">as</span> <span class="nv">$k</span> <span class="o">=&gt;</span> <span class="nv">$v</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nv">$params</span><span class="p">[</span><span class="nv">$k</span><span class="p">]</span> <span class="o">=</span> <span class="nv">$v</span><span class="p">;</span>
+        <span class="p">}</span>
+
+        <span class="c1">//Check the MD5 Hash to determine the validity of the sale.</span>
+        <span class="nv">$passback</span> <span class="o">=</span> <span class="nx">Twocheckout_Return</span><span class="o">::</span><span class="na">check</span><span class="p">(</span><span class="nv">$params</span><span class="p">,</span> <span class="s2">"tango"</span><span class="p">,</span> <span class="s1">'array'</span><span class="p">);</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="nv">$passback</span><span class="p">[</span><span class="s1">'code'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'Success'</span><span class="p">)</span> <span class="p">{</span>
+            <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'merchant_order_id'</span><span class="p">];</span>
+            <span class="nv">$order_number</span> <span class="o">=</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'order_number'</span><span class="p">];</span>
+            <span class="nv">$invoice_id</span> <span class="o">=</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'invoice_id'</span><span class="p">];</span>
+            <span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                <span class="s1">'active'</span> <span class="o">=&gt;</span> <span class="mi">1</span><span class="p">,</span>
+                <span class="s1">'order_number'</span> <span class="o">=&gt;</span> <span class="nv">$order_number</span><span class="p">,</span>
+                <span class="s1">'last_invoice'</span> <span class="o">=&gt;</span> <span class="nv">$invoice_id</span>
+                <span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">update</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/header'</span><span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/navblank'</span><span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/order/return_success'</span><span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/footer'</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/header'</span><span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/navblank'</span><span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/order/return_failed'</span><span class="p">);</span>
+            <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/footer'</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+</pre></div>
+
+<p>First we grab all of the parameters returned by 2Checkout and assign the to the <code>params</code> array that we created.</p>
+
+<p>Then we pass the array and our secret word to the <code>Twocheckout::Return</code> binding and check the response. <em>(Twocheckout bindings return JSON by default or you can pass an optional third argument 'array' to return the response in an array.)</em></p>
+
+<p>If the response if successful <code>$response['code'] == "Success"</code>, we activate the user and display the order success page. If the response is not successful <code>$response['code</code>] == "Fail"`, we display the order failed page.</p>
+
+<p>Now we can setup our return method, enter our secret word and provide the approved URL path "http://localhost/web-widgets/index.php/order/passback" under the Site Management page in our 2Checkout admin.</p>
+
+<p><strong>Site Management Page</strong></p>
+
+<p><img src="http://github.com/2checkout/2checkout-ci-tutorial/raw/master/img/webwidgets-3.png" alt=""></p>
+
+<p><strong>Lets try it out with a live sale.</strong></p>
+
+<p><img src="http://github.com/2checkout/2checkout-ci-tutorial/raw/master/img/webwidgets-2.png" alt=""></p>
+
+<p><strong>Enter in our billing information.</strong></p>
+
+<p><img src="http://github.com/2checkout/2checkout-ci-tutorial/raw/master/img/webwidgets-4.png" alt=""></p>
+
+<p><strong>Submit the payment.</strong></p>
+
+<p><img src="http://github.com/2checkout/2checkout-ci-tutorial/raw/master/img/webwidgets-5.png" alt=""></p>
+
+<p>Now the user is activated and can login to access the content that they paid for.</p>
+
+<h2>Notifications</h2>
+
+<p>2Checkout will send notifications to our application under the following circumstances.</p>
+
+<ul>
+<li>Order Created</li>
+<li>Fraud Status Changed</li>
+<li>Shipping Status Changed</li>
+<li>Invoice Status Changed</li>
+<li>Refund Issued</li>
+<li>Recurring Installment Success</li>
+<li>Recurring Installment Failed</li>
+<li>Recurring Stopped</li>
+<li>Recurring Complete</li>
+<li>Recurring Restarted</li>
+</ul><p>For our application, we are interested in the Fraud Status Changed message to disbale the user if the sale fails fraud review, Recurring Installment Failed to disable the user if their billing fails to bill successfully, and the Recurring Installment Success message to re-enable a disbaled user.</p>
+
+<p>We are going to setup our notification function under our order controller.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="k">public</span> <span class="k">function</span> <span class="nf">notification</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="c1">//Assign the returned parameters to an array</span>
+    <span class="nv">$params</span> <span class="o">=</span> <span class="k">array</span><span class="p">();</span>
+    <span class="k">foreach</span> <span class="p">(</span><span class="nv">$_POST</span> <span class="k">as</span> <span class="nv">$k</span> <span class="o">=&gt;</span> <span class="nv">$v</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nv">$params</span><span class="p">[</span><span class="nv">$k</span><span class="p">]</span> <span class="o">=</span> <span class="nv">$v</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="c1">//Check the MD5 Hash to determine the validity of the message</span>
+    <span class="nv">$message</span> <span class="o">=</span> <span class="nx">Twocheckout_Notification</span><span class="o">::</span><span class="na">check</span><span class="p">(</span><span class="nv">$params</span><span class="p">,</span> <span class="s2">"tango"</span><span class="p">,</span> <span class="s1">'array'</span><span class="p">);</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$message</span><span class="p">[</span><span class="s1">'code'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'Success'</span><span class="p">)</span> <span class="p">{</span>
+        <span class="c1">//Preform different actions based on the message_type</span>
+        <span class="k">switch</span> <span class="p">(</span><span class="nv">$params</span><span class="p">[</span><span class="s1">'message_type'</span><span class="p">])</span> <span class="p">{</span>
+            <span class="k">case</span> <span class="s1">'FRAUD_STATUS_CHANGED'</span><span class="o">:</span>
+                <span class="k">if</span> <span class="p">(</span><span class="nv">$params</span><span class="p">[</span><span class="s1">'fraud_status'</span><span class="p">]</span> <span class="o">==</span> <span class="s1">'fail'</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="c1">//Get the user id and disable access</span>
+                    <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'vendor_order_id'</span><span class="p">];</span>
+                    <span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                        <span class="s1">'active'</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+                        <span class="p">);</span>
+                    <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">update</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+                <span class="p">}</span>
+                <span class="k">break</span><span class="p">;</span>
+            <span class="k">case</span> <span class="s1">'RECURRING_INSTALLMENT_FAILED'</span><span class="o">:</span>
+                <span class="c1">//Get the user id and disable access</span>
+                <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'vendor_order_id'</span><span class="p">];</span>
+                <span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                    <span class="s1">'active'</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+                    <span class="p">);</span>
+                <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">update</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+                <span class="k">break</span><span class="p">;</span>
+            <span class="k">case</span> <span class="s1">'RECURRING_INSTALLMENT_SUCCESS'</span><span class="o">:</span>
+                <span class="c1">//Get the user id and enable access</span>
+                <span class="nv">$user</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">user</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">row</span><span class="p">();</span>
+                <span class="nv">$status</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">active</span><span class="p">;</span>
+                <span class="k">if</span> <span class="p">(</span><span class="nv">$status</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+                    <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'vendor_order_id'</span><span class="p">];</span>
+                        <span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+                            <span class="s1">'active'</span> <span class="o">=&gt;</span> <span class="mi">1</span><span class="p">,</span>
+                            <span class="s1">'last_billed'</span> <span class="o">=&gt;</span> <span class="nb">time</span><span class="p">(),</span>
+                            <span class="s1">'last_invoice'</span> <span class="o">=&gt;</span> <span class="nv">$params</span><span class="p">[</span><span class="s1">'invoice_id'</span><span class="p">]</span>
+                            <span class="p">);</span>
+                    <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">update</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+                <span class="p">}</span>
+                <span class="k">break</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>We grab the message parameters from the $_POST variable and assign each key/value pair to an array.</p>
+
+<p>Then we pass the array and our secret word to the <code>Twocheckout::Notification</code> binding and check the response. <em>(Twocheckout bindings return JSON by default or you can pass an optional third argument 'array' to return the response in an array.)</em></p>
+
+<p>If the response if successful <code>$response['code'] == "Success"</code>, we can preform actions based on the <code>message_type</code> parameter value.</p>
+
+<p>For the Fraud Status Changed message, we will check the value of the <code>fraud_status</code> parameter and disable the user if it equals 'pass'.
+For the Recurring Installment Failed message we will disable the user.
+For the Recurring Installment Success message we will enable the user.</p>
+
+<p>Now we can setup our Notification URL path "http://localhost/web-widgets/index.php/order/notification" and enable each message under the Notifications page in our 2Checkout admin.</p>
+
+<p><img src="http://github.com/2checkout/2checkout-ci-tutorial/raw/master/img/webwidgets-6.png" alt=""></p>
+
+<p>Lets test our notification function. Now there are a couple ways to go about this. You can wait for the notifications to come on a live sale, or just head over to the <a href="http://developers.2checkout.com/inss">INS testing tool</a> and test the messages right now. Remember the MD5 hash must match so for easy testing, you must compute the hash based on the like below:</p>
+
+<p><code>UPPERCASE(MD5_ENCRYPTED(sale_id + vendor_id + invoice_id + Secret Word))</code></p>
+
+<p>You can just use an <a href="https://www.google.com/webhp?q=md5+generator">online MD5 Hash generator</a> and convert it to uppercase.</p>
+
+<h2>Cancel</h2>
+
+<p>We want to provide the user with the ability to cancel their membership and recurring billing without having to contact us so we already have a view setup for this. To cancel the recurring billing we will use the <code>Twocheckout::Sale::stop</code> binding to cancel all active recurring lineitems on the sale.</p>
+
+<p>To accomplish this we will setup a cancel confirmation view, a cancel success page and a cancel function in our order controller.</p>
+
+<p><code>application/views/order/cancel.php</code></p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="o">&lt;?</span><span class="nx">php</span> <span class="k">echo</span> <span class="nx">form_open</span><span class="p">(</span><span class="s2">"&lt;?php echo site_url().'/order/cancel' ?&gt;"</span><span class="p">);</span><span class="cp">?&gt;</span><span class="x"></span>
+<span class="x">    &lt;input type="hidden" name="cancel" value="true"&gt;</span>
+<span class="x">    &lt;p&gt;&lt;button type="submit" class="btn btn-primary btn-large"&gt;Cancel Subscription&lt;/button&gt;&lt;/p&gt;</span>
+<span class="cp">&lt;?php</span> <span class="k">echo</span> <span class="nx">form_close</span><span class="p">();</span><span class="cp">?&gt;</span><span class="x"></span>
+</pre></div>
+
+<p><code>application/views/order/cancel_success.php</code></p>
+
+<div class="highlight"><pre><span class="o">&lt;</span><span class="nx">div</span> <span class="nx">class</span><span class="o">=</span><span class="s2">"container"</span><span class="o">&gt;</span>
+      <span class="o">&lt;</span><span class="nx">h1</span><span class="o">&gt;</span><span class="nx">Membership</span> <span class="nx">Canceled</span><span class="o">&lt;/</span><span class="nx">h1</span><span class="o">&gt;</span>
+      <span class="o">&lt;</span><span class="nx">p</span><span class="o">&gt;</span><span class="nx">We</span> <span class="nx">have</span> <span class="nx">issued</span> <span class="nx">you</span> <span class="nx">a</span> <span class="nx">refund</span> <span class="nx">of</span> <span class="err">$</span><span class="o">&lt;?</span><span class="nx">php</span> <span class="k">echo</span> <span class="nv">$refund_amount</span><span class="p">;</span> <span class="cp">?&gt;</span><span class="x"> for the remaining unused</span>
+<span class="x">        </span><span class="cp">&lt;?php</span> <span class="k">echo</span> <span class="nv">$remaining_days</span><span class="p">;</span> <span class="cp">?&gt;</span><span class="x"> days of your subscription. You will recieve the credit with in 5-7 days.&lt;/p&gt;</span>
+<span class="x">&lt;/div&gt;</span>
+</pre></div>
+
+<p><code>application/contollers/order.php</code></p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="k">public</span> <span class="k">function</span> <span class="nf">cancel</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nv">$this</span><span class="o">-&gt;</span><span class="na">input</span><span class="o">-&gt;</span><span class="na">post</span><span class="p">(</span><span class="s1">'cancel'</span><span class="p">))</span> <span class="p">{</span>
+        <span class="nv">$user</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">user</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">row</span><span class="p">();</span>
+        <span class="nv">$order_number</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">order_number</span><span class="p">;</span>
+        <span class="nv">$invoice_id</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">last_invoice</span><span class="p">;</span>
+
+        <span class="c1">//Define API User and Password</span>
+        <span class="nx">Twocheckout</span><span class="o">::</span><span class="na">setCredentials</span><span class="p">(</span><span class="s2">"APIuser1817037"</span><span class="p">,</span> <span class="s2">"APIpass1817037"</span><span class="p">);</span>
+
+        <span class="c1">//Stop recurring billing</span>
+        <span class="nv">$args</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span><span class="s1">'sale_id'</span> <span class="o">=&gt;</span> <span class="nv">$order_number</span><span class="p">);</span>
+        <span class="nx">Twocheckout_Sale</span><span class="o">::</span><span class="na">stop</span><span class="p">(</span><span class="nv">$args</span><span class="p">,</span> <span class="s1">'array'</span><span class="p">);</span>
+
+        <span class="c1">//Calculate used time and refund amount</span>
+        <span class="nv">$last_bill_date</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">last_billed</span><span class="p">;</span>
+        <span class="nv">$next_bill_date</span> <span class="o">=</span> <span class="nb">strtotime</span><span class="p">(</span><span class="s1">'+1 month'</span><span class="p">,</span><span class="nv">$last_bill_date</span><span class="p">);</span>
+        <span class="nv">$remaining_days</span> <span class="o">=</span> <span class="nx">floor</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="nb">time</span><span class="p">()</span> <span class="o">-</span> <span class="nv">$next_bill_date</span><span class="p">)</span><span class="o">/</span><span class="mi">60</span><span class="o">/</span><span class="mi">60</span><span class="o">/</span><span class="mi">24</span><span class="p">);</span>
+        <span class="nv">$refund_amount</span> <span class="o">=</span> <span class="nx">round</span><span class="p">((</span><span class="mf">1.00</span> <span class="o">/</span> <span class="mi">30</span><span class="p">)</span> <span class="o">*</span> <span class="nv">$remaining_days</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>
+
+        <span class="c1">//Refund remaining balance</span>
+        <span class="nv">$args</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+            <span class="s1">'invoice_id'</span> <span class="o">=&gt;</span> <span class="nv">$invoice_id</span><span class="p">,</span>
+            <span class="s1">'category'</span> <span class="o">=&gt;</span> <span class="mi">5</span><span class="p">,</span>
+            <span class="s1">'amount'</span> <span class="o">=&gt;</span> <span class="nv">$refund_amount</span><span class="p">,</span>
+            <span class="s1">'currency'</span> <span class="o">=&gt;</span> <span class="s1">'vendor'</span><span class="p">,</span>
+            <span class="s1">'comment'</span> <span class="o">=&gt;</span> <span class="s1">'Refunding remaining balance'</span>
+            <span class="p">);</span>
+        <span class="nx">Twocheckout_Sale</span><span class="o">::</span><span class="na">refund</span><span class="p">(</span><span class="nv">$args</span><span class="p">,</span> <span class="s1">'array'</span><span class="p">);</span>
+
+        <span class="c1">//Deactivate User</span>
+        <span class="nv">$id</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">id</span><span class="p">;</span>
+        <span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+            <span class="s1">'active'</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+            <span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">update</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">logout</span><span class="p">();</span>
+
+        <span class="c1">//Reinit $data array for view</span>
+        <span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+           <span class="s1">'remaining_days'</span> <span class="o">=&gt;</span> <span class="nv">$remaining_days</span><span class="p">,</span>
+           <span class="s1">'refund_amount'</span> <span class="o">=&gt;</span> <span class="nv">$refund_amount</span>
+        <span class="p">);</span>
+
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/header'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/navblank'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/order/cancel_success'</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/footer'</span><span class="p">);</span>
+     <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/header'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/navblank'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/order/cancel'</span><span class="p">);</span>
+        <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/footer'</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+<p>When we get the cancel confirmation from the user, we get the user's order_number and their most recent invoice_id.</p>
+
+<p>We then set our 2Checkout API username and password using the <code>Twocheckout::setCredentials()</code> method.</p>
+
+<p>Now we set the order_number to the 'sale_id' key in an array and pass the array to the <code>Twocheckout_Sale::stop()</code> method.</p>
+
+<p>Since we are going to disable the user, we should also go ahead and refund them for the unused days in their subscription. So we use the last_billed timestamp for the user to caclulate the unused days in their subscription.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="nv">$last_bill_date</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">last_billed</span><span class="p">;</span>
+<span class="nv">$next_bill_date</span> <span class="o">=</span> <span class="nb">strtotime</span><span class="p">(</span><span class="s1">'+1 month'</span><span class="p">,</span><span class="nv">$last_bill_date</span><span class="p">);</span>
+<span class="nv">$remaining_days</span> <span class="o">=</span> <span class="nx">floor</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="nb">time</span><span class="p">()</span> <span class="o">-</span> <span class="nv">$next_bill_date</span><span class="p">)</span><span class="o">/</span><span class="mi">60</span><span class="o">/</span><span class="mi">60</span><span class="o">/</span><span class="mi">24</span><span class="p">);</span>
+</pre></div>
+
+<p>We can then apply that to the subscription cost to get the refund amount.</p>
+
+<div class="highlight"><pre><span class="nv">$refund_amount</span> <span class="o">=</span> <span class="nx">round</span><span class="p">((</span><span class="mf">1.00</span> <span class="o">/</span> <span class="mi">30</span><span class="p">)</span> <span class="o">*</span> <span class="nv">$remaining_days</span><span class="p">,</span> <span class="mi">2</span><span class="p">);</span>
+</pre></div>
+
+<p>To submit the refund, we setup the an array that contains the invoice_id from the most recent invoice, the refund amount and currency, and the comment and category.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="nv">$args</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+    <span class="s1">'invoice_id'</span> <span class="o">=&gt;</span> <span class="nv">$invoice_id</span><span class="p">,</span>
+    <span class="s1">'category'</span> <span class="o">=&gt;</span> <span class="mi">5</span><span class="p">,</span>
+    <span class="s1">'amount'</span> <span class="o">=&gt;</span> <span class="nv">$refund_amount</span><span class="p">,</span>
+    <span class="s1">'currency'</span> <span class="o">=&gt;</span> <span class="s1">'vendor'</span><span class="p">,</span>
+    <span class="s1">'comment'</span> <span class="o">=&gt;</span> <span class="s1">'Refunding remaining balance'</span>
+    <span class="p">);</span>
+
+<span class="nx">Twocheckout_Sale</span><span class="o">::</span><span class="na">refund</span><span class="p">(</span><span class="nv">$args</span><span class="p">,</span> <span class="s1">'array'</span><span class="p">);</span>
+</pre></div>
+
+<p>We then disable the user and redirect them to our cancel success page.</p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="c1">//Deactivate User</span>
+<span class="nv">$id</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">id</span><span class="p">;</span>
+<span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+    <span class="s1">'active'</span> <span class="o">=&gt;</span> <span class="mi">0</span>
+    <span class="p">);</span>
+<span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">update</span><span class="p">(</span><span class="nv">$id</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+<span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">logout</span><span class="p">();</span>
+
+<span class="c1">//Reinit $data array for view</span>
+<span class="nv">$data</span> <span class="o">=</span> <span class="k">array</span><span class="p">(</span>
+   <span class="s1">'remaining_days'</span> <span class="o">=&gt;</span> <span class="nv">$remaining_days</span><span class="p">,</span>
+   <span class="s1">'refund_amount'</span> <span class="o">=&gt;</span> <span class="nv">$refund_amount</span>
+<span class="p">);</span>
+
+<span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/header'</span><span class="p">);</span>
+<span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/navblank'</span><span class="p">);</span>
+<span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/order/cancel_success'</span><span class="p">,</span> <span class="nv">$data</span><span class="p">);</span>
+<span class="nv">$this</span><span class="o">-&gt;</span><span class="na">load</span><span class="o">-&gt;</span><span class="na">view</span><span class="p">(</span><span class="s1">'/include/footer'</span><span class="p">);</span>
+</pre></div>
+
+<h2>Update</h2>
+
+<p>This last one is easy. 2Checkout provides a page for users to update their billing information on a recurring sale. We could just define the URL in our navbar. But to make it easy for them, lets pass in the order_number when we redirect them.</p>
+
+<p><code>application/views/include/navbar.php</code></p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="o">&lt;</span><span class="nx">a</span> <span class="nx">href</span><span class="o">=</span><span class="s2">"&lt;?php echo site_url().'/order/update' ?&gt;"</span><span class="o">&gt;</span><span class="nx">Update</span> <span class="nx">Billing</span> <span class="nx">Information</span><span class="o">&lt;/</span><span class="nx">a</span><span class="o">&gt;</span>
+</pre></div>
+
+<p>Now lets setup our update function.</p>
+
+<p><code>application/contollers/order.php</code></p>
+
+<div class="highlight"><pre><span class="o">&lt;?</span><span class="nx">php</span>
+
+<span class="k">public</span> <span class="k">function</span> <span class="nf">update</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="nv">$user</span> <span class="o">=</span> <span class="nv">$this</span><span class="o">-&gt;</span><span class="na">ion_auth</span><span class="o">-&gt;</span><span class="na">user</span><span class="p">()</span><span class="o">-&gt;</span><span class="na">row</span><span class="p">();</span>
+    <span class="nv">$order_number</span> <span class="o">=</span> <span class="nv">$user</span><span class="o">-&gt;</span><span class="na">order_number</span><span class="p">;</span>
+    <span class="nx">redirect</span><span class="p">(</span><span class="s1">'https://www.2checkout.com/va/sales/customer/change_billing_method?sale_id='</span><span class="o">.</span><span class="nv">$order_number</span><span class="p">,</span> <span class="s1">'refresh'</span><span class="p">);</span>
+<span class="p">}</span>
+</pre></div>
+
+<h2>Conclusion</h2>
+
+<p>Now our application is fully integrated! Our users can register, pay for their membership and immediatly get access. We update the user based on the 2Checkout INS messages, and we provided the user with the ability to cancel the order or update their billing information.</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">2Checkout PHP Tutorial maintained by <a href="https://github.com/2Checkout">2Checkout</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
