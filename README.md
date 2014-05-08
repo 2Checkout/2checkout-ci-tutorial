@@ -380,7 +380,8 @@ public function cancel()
         $invoice_id = $user->last_invoice;
 
         //Define API User and Password
-        Twocheckout::setCredentials("APIuser1817037", "APIpass1817037");
+        Twocheckout::username("APIuser1817037");
+        Twocheckout::password("APIpass1817037");
 
         //Stop recurring billing
         $args = array('sale_id' => $order_number);
@@ -430,7 +431,7 @@ public function cancel()
 ```
 When we get the cancel confirmation from the user, we get the user's order\_number and their most recent invoice\_id.
 
-We then set our 2Checkout API username and password using the `Twocheckout::setCredentials()` method.
+We then set our 2Checkout API username and password using the `Twocheckout::username()` and `Twocheckout::password()` methods.
 
 Now we set the order\_number to the 'sale\_id' key in an array and pass the array to the `Twocheckout_Sale::stop()` method.
 
